@@ -1,0 +1,9 @@
+[package]
+name = "forkpty"
+version = "0.1.0"
+authors = ["Igor Bykov <igorb.dev@websm.io>"]
+edition = "2018"
+
+[dependencies]
+nix = "*"
+libc = "*"

@@ -120,8 +120,6 @@ pub fn forkpty() -> Result<ForkPtyResult, Box<Error>> {
 
     let slave_name = unsafe { ptsname(&pty_master) }?;
 
-    println!("{:?}", slave_name);
-
     let slave_file = OpenOptions::new()
         .read(true)
         .write(true)

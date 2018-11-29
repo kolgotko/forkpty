@@ -145,6 +145,7 @@ impl Drop for PtyMaster {
 impl Clone for PtyMaster {
     fn clone(&self) -> PtyMaster {
         let new_fd = dup(self.0).unwrap();
+        println!("clone pty fd: {}", new_fd);
         PtyMaster(new_fd)
     }
 }

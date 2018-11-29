@@ -39,8 +39,8 @@ fn main() -> Result<(), Box<Error>> {
             };
 
             pty_master.resize(winsize);
-            let mut pty_master_reader = pty_master.clone();
-            let mut pty_master_writer = pty_master.clone();
+            let mut pty_master_reader = pty_master.get_reader().unwrap();
+            let mut pty_master_writer = pty_master.get_writer().unwrap();
 
             let out_listener = UnixListener::bind("/tmp/new_process_out.sock").unwrap();
             let in_listener = UnixListener::bind("/tmp/new_process_in.sock").unwrap();
@@ -95,105 +95,5 @@ fn main() -> Result<(), Box<Error>> {
     }
 
     Ok(())
-
-}
-
-fn _main() {
-
-    let master_fd = posix_openpt(OFlag::O_RDWR).unwrap();
-    grantpt(&master_fd).unwrap();
-    unlockpt(&master_fd).unwrap();
-    let slave_name = unsafe { ptsname(&master_fd) }.unwrap();
-    let master_fd = master_fd.as_raw_fd();
-
-    let file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(&slave_name)
-        .unwrap();
-
-    let slave_fd = file.as_raw_fd();
-
-    println!("dev: {}", slave_name);
-
-    unsafe {
-        let winsize: Winsize = Winsize {
-            ws_row: 34,
-            ws_col: 125,
-            ws_xpixel: 0,
-            ws_ypixel: 0,
-        };
-
-        libc::ioctl(master_fd, libc::TIOCSWINSZ, &winsize);
-    }
-
-    let out_listener = UnixListener::bind("/tmp/new_process_out.sock").unwrap();
-    let in_listener = UnixListener::bind("/tmp/new_process_in.sock").unwrap();
-
-    let (mut out_stream, _) = out_listener.accept().unwrap();
-
-    thread::spawn(move || {
-
-        let mut buffer: Vec<u8> = vec![0; libc::BUFSIZ as usize];
-
-        loop {
-
-            let count = read(master_fd, &mut buffer).unwrap();
-            out_stream.write(&buffer[0..count]).unwrap();
-            out_stream.flush().unwrap();
-
-        }
-
-    });
-
-    let (mut in_stream, _) = in_listener.accept().unwrap();
-
-    thread::spawn(move || {
-
-        for byte in in_stream.bytes() {
-            write(master_fd, &[byte.unwrap()]);
-        }
-
-    });
-
-    match fork() {
-        Ok(ForkResult::Parent { child, .. }) => {
-
-            println!("child: {:?}", child);
-            close(slave_fd);
-            waitpid(child, None);
-
-        },
-        Ok(ForkResult::Child) => {
-
-            let stdin = io::stdin();
-            let stdout = io::stdout();
-            let stderr = io::stderr();
-
-            close(master_fd);
-            close(stdin.as_raw_fd());
-            close(stdout.as_raw_fd());
-            close(stderr.as_raw_fd());
-
-            dup(slave_fd);
-            dup(slave_fd);
-            dup(slave_fd);
-
-            close(slave_fd);
-
-            setsid().unwrap();
-
-            unsafe {
-                libc::ioctl(0, libc::TIOCSCTTY.into(), 1);
-            }
-
-            let command = CString::new("sh").unwrap();
-            execvp(&command, &[
-               CString::new("").unwrap(),
-            ]);
-
-        },
-        Err(_) => println!("Fork failed"),
-    }
 
 }

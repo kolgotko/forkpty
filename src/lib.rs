@@ -133,6 +133,8 @@ impl Drop for PtyMaster {
 
         let err = close(self.0);
 
+        println!("close pty fd: {}", self.0);
+
         if err == Err(nix::Error::Sys(nix::errno::Errno::EBADF)) {
             panic!("Closing an invalid file descriptor!");
         };

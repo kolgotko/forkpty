@@ -50,7 +50,7 @@ fn main() -> Result<(), Box<Error>> {
             thread::spawn(move || {
 
                 let mut buffer: Vec<u8> = vec![0; libc::BUFSIZ as usize];
-                pty_master_reader.timeout(300).unwrap();
+                pty_master_reader.set_timeout(300).unwrap();
                 pty_master_reader.set_nonblocking(true);
 
                 for bytes in pty_master_reader.bytes() {

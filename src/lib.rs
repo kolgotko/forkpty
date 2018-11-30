@@ -73,9 +73,14 @@ pub trait SetNonblocking: AsRawFd {
 pub struct PtyReader { fd: i32, timeout: i32 }
 
 impl PtyReader {
-    pub fn timeout(&mut self, value: i32) -> io::Result<()> {
+
+    pub fn set_timeout(&mut self, value: i32) -> io::Result<()> {
         self.timeout = value;
         Ok(())
+    }
+
+    pub fn get_timeout(&self) -> i32 {
+        self.timeout
     }
 
 }
@@ -129,6 +134,19 @@ impl SetNonblocking for PtyReader {}
 
 #[derive(Debug, Clone)]
 pub struct PtyWriter{ fd: i32, timeout: i32 }
+
+impl PtyWriter {
+
+    pub fn set_timeout(&mut self, value: i32) -> io::Result<()> {
+        self.timeout = value;
+        Ok(())
+    }
+
+    pub fn get_timeout(&self) -> i32 {
+        self.timeout
+    }
+
+}
 
 impl io::Write for PtyWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {

@@ -13,6 +13,7 @@ pub use nix::pty::Winsize;
 use nix::pty::PtyMaster as NixPtyMaster;
 use nix::fcntl::{OFlag, open, fcntl, FcntlArg};
 use nix::sys::wait::*;
+use nix::poll::*;
 pub use nix::sys::wait::WaitStatus;
 
 pub trait PtyResize {
@@ -37,37 +38,133 @@ pub trait IsAlive: AsRawFd {
 
 }
 
+pub trait SetNonblocking: AsRawFd {
+
+    fn set_nonblocking(&mut self, value: bool) -> io::Result<()> {
+
+        let fd = self.as_raw_fd();
+        let saved = fcntl(fd, FcntlArg::F_GETFL)
+            .map_err(|error| {
+                let kind = io::ErrorKind::Other;
+                io::Error::new(kind, error)
+            })?;
+
+        let mut o_flag = OFlag::from_bits(saved)
+            .ok_or_else(|| {
+                let kind = io::ErrorKind::Other;
+                io::Error::new(kind, "incorrect bits for OFlag")
+            })?;
+
+        o_flag.set(OFlag::O_NONBLOCK, value);
+
+        fcntl(fd, FcntlArg::F_SETFL(o_flag))
+            .map_err(|error| {
+                let kind = io::ErrorKind::Other;
+                io::Error::new(kind, error)
+            })?;
+
+        Ok(())
+
+    }
+
+}
+
 #[derive(Debug, Clone)]
-pub struct PtyReader(i32);
+pub struct PtyReader { fd: i32, timeout: i32 }
+
+impl PtyReader {
+    pub fn timeout(&mut self, value: i32) -> io::Result<()> {
+        self.timeout = value;
+        Ok(())
+    }
+
+}
 
 impl io::Read for PtyReader {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
 
-        read(self.0, buf).map_err(|error| {
-            let kind = io::ErrorKind::Other;
-            io::Error::new(kind, error)
-        })
+        let poll_fd = PollFd::new(self.fd, EventFlags::POLLIN);
+
+        match poll(&mut [poll_fd], self.timeout) {
+
+            Ok(0) => {
+
+                let kind = io::ErrorKind::TimedOut;
+                Err(io::Error::from(kind))
+
+            },
+            Ok(_) => {
+
+                read(self.fd, buf).map_err(|error| {
+                    let kind = io::ErrorKind::Other;
+                    io::Error::new(kind, error)
+                })
+
+            },
+            Ok(-1) => {
+
+                Err(io::Error::last_os_error())
+
+            },
+            Err(error) => {
+
+                let kind = io::ErrorKind::Other;
+                Err(io::Error::new(kind, error))
+
+            }
+
+        }
 
     }
 }
 
 impl AsRawFd for PtyReader {
     fn as_raw_fd(&self) -> i32 {
-        self.0
+        self.fd
     }
 }
 
 impl IsAlive for PtyReader {}
+impl SetNonblocking for PtyReader {}
 
 #[derive(Debug, Clone)]
-pub struct PtyWriter(i32);
+pub struct PtyWriter{ fd: i32, timeout: i32 }
 
 impl io::Write for PtyWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        write(self.0, buf).map_err(|error| {
-            let kind = io::ErrorKind::Other;
-            io::Error::new(kind, error)
-        })
+
+        let poll_fd = PollFd::new(self.fd, EventFlags::POLLOUT);
+
+        match poll(&mut [poll_fd], self.timeout) {
+
+            Ok(0) => {
+
+                let kind = io::ErrorKind::TimedOut;
+                Err(io::Error::from(kind))
+
+            },
+            Ok(_) => {
+
+                write(self.fd, buf).map_err(|error| {
+                    let kind = io::ErrorKind::Other;
+                    io::Error::new(kind, error)
+                })
+
+            },
+            Ok(-1) => {
+
+                Err(io::Error::last_os_error())
+
+            },
+            Err(error) => {
+
+                let kind = io::ErrorKind::Other;
+                Err(io::Error::new(kind, error))
+
+            }
+
+        }
+
     }
 
     fn flush(&mut self) -> io::Result<()> {
@@ -77,11 +174,12 @@ impl io::Write for PtyWriter {
 
 impl AsRawFd for PtyWriter {
     fn as_raw_fd(&self) -> i32 {
-        self.0
+        self.fd
     }
 }
 
 impl IsAlive for PtyWriter {}
+impl SetNonblocking for PtyWriter {}
 
 #[derive(Debug)]
 pub struct PtyMaster(i32);
@@ -109,7 +207,7 @@ impl PtyMaster {
     pub fn get_reader(&self) -> Option<PtyReader> {
 
         if self.is_alive() {
-            Some(PtyReader(self.as_raw_fd()))
+            Some(PtyReader{ fd: self.as_raw_fd(), timeout: -1 })
         } else {
             None
         }
@@ -119,7 +217,7 @@ impl PtyMaster {
     pub fn get_writer(&self) -> Option<PtyWriter> {
 
         if self.is_alive() {
-            Some(PtyWriter(self.as_raw_fd()))
+            Some(PtyWriter{ fd: self.as_raw_fd(), timeout: -1 })
         } else {
             None
         }
@@ -133,8 +231,6 @@ impl Drop for PtyMaster {
 
         let err = close(self.0);
 
-        println!("close pty fd: {}", self.0);
-
         if err == Err(nix::Error::Sys(nix::errno::Errno::EBADF)) {
             panic!("Closing an invalid file descriptor!");
         };
@@ -145,7 +241,6 @@ impl Drop for PtyMaster {
 impl Clone for PtyMaster {
     fn clone(&self) -> PtyMaster {
         let new_fd = dup(self.0).unwrap();
-        println!("clone pty fd: {}", new_fd);
         PtyMaster(new_fd)
     }
 }

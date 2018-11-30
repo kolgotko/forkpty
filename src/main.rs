@@ -50,15 +50,39 @@ fn main() -> Result<(), Box<Error>> {
             thread::spawn(move || {
 
                 let mut buffer: Vec<u8> = vec![0; libc::BUFSIZ as usize];
+                pty_master_reader.timeout(300).unwrap();
+                pty_master_reader.set_nonblocking(true);
 
-                loop {
+                for bytes in pty_master_reader.bytes() {
 
-                    let count = pty_master_reader.read(&mut buffer).unwrap();
-                    // let count = read(master_fd, &mut buffer).unwrap();
-                    out_stream.write(&buffer[0..count]).unwrap();
-                    out_stream.flush().unwrap();
+                    match bytes {
+
+                        Ok(bytes) => {
+                            out_stream.write(&[bytes]).unwrap();
+                        },
+                        Err(error) => {
+
+                            if let io::ErrorKind::TimedOut = error.kind() {
+
+                                println!("timeout");
+                                continue;
+
+                            } else { break; }
+
+                        }
+
+                    }
 
                 }
+
+                // loop {
+
+                //     let count = pty_master_reader.read(&mut buffer).unwrap();
+                //     // let count = read(master_fd, &mut buffer).unwrap();
+                //     out_stream.write(&buffer[0..count]).unwrap();
+                //     out_stream.flush().unwrap();
+
+                // }
 
             });
 
@@ -78,8 +102,6 @@ fn main() -> Result<(), Box<Error>> {
 
         },
         Ok(ForkPtyResult::Child(_)) => {
-
-            create_dir_all("/tmp/i_am_a_live");
 
             let command = CString::new("sh").unwrap();
             execvp(&command, &[

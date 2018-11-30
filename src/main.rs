@@ -64,7 +64,6 @@ fn main() -> Result<(), Box<Error>> {
 
                             if let io::ErrorKind::TimedOut = error.kind() {
 
-                                println!("timeout");
                                 continue;
 
                             } else { break; }
@@ -74,15 +73,6 @@ fn main() -> Result<(), Box<Error>> {
                     }
 
                 }
-
-                // loop {
-
-                //     let count = pty_master_reader.read(&mut buffer).unwrap();
-                //     // let count = read(master_fd, &mut buffer).unwrap();
-                //     out_stream.write(&buffer[0..count]).unwrap();
-                //     out_stream.flush().unwrap();
-
-                // }
 
             });
 

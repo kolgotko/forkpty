@@ -14,7 +14,45 @@ use nix::pty::PtyMaster as NixPtyMaster;
 use nix::fcntl::{OFlag, open, fcntl, FcntlArg};
 use nix::sys::wait::*;
 use nix::poll::*;
+use nix::Error as NixError;
+use nix::errno::Errno as NixErrno;
 pub use nix::sys::wait::WaitStatus;
+
+
+#[derive(Debug)]
+pub enum CloneError {
+    EBADF,
+    EMFILE,
+    Unsupported(NixError),
+}
+
+impl fmt::Display for CloneError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+
+        match self {
+            CloneError::EBADF => {
+                write!(f, "[EBADF] The oldd argument is not a valid active descriptor")
+            },
+            CloneError::EMFILE => {
+                write!(f, "[EMFILE] Too many descriptors are active")
+            },
+            CloneError::Unsupported(error) => error.fmt(f)
+        }
+
+    }
+}
+
+impl Error for CloneError {}
+
+impl From<NixError> for CloneError {
+    fn from(value: NixError) -> CloneError {
+        match value {
+            NixError::Sys(NixErrno::EBADF) => CloneError::EBADF,
+            NixError::Sys(NixErrno::EMFILE) => CloneError::EMFILE,
+            nix_error @ _ => CloneError::Unsupported(nix_error),
+        }
+    }
+}
 
 pub trait PtyResize {
 
@@ -242,6 +280,11 @@ impl PtyMaster {
 
     }
 
+    pub fn try_clone(&self) -> Result<PtyMaster, CloneError> {
+        let new_fd = dup(self.0)?;
+        Ok(PtyMaster(new_fd))
+    }
+
 }
 
 impl Drop for PtyMaster {
@@ -253,13 +296,6 @@ impl Drop for PtyMaster {
             panic!("Closing an invalid file descriptor!");
         };
 
-    }
-}
-
-impl Clone for PtyMaster {
-    fn clone(&self) -> PtyMaster {
-        let new_fd = dup(self.0).unwrap();
-        PtyMaster(new_fd)
     }
 }
 

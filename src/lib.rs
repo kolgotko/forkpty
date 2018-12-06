@@ -17,6 +17,7 @@ use nix::poll::*;
 use nix::Error as NixError;
 use nix::errno::Errno as NixErrno;
 pub use nix::sys::wait::WaitStatus;
+pub use nix::sys::wait::WaitPidFlag;
 
 
 #[derive(Debug)]
@@ -325,9 +326,9 @@ impl IntoRawFd for PtyMaster {
 pub struct Child(Pid);
 
 impl Child {
-    pub fn wait(&self) -> nix::Result<WaitStatus> {
+    pub fn wait(&self, options: Option<WaitPidFlag>) -> nix::Result<WaitStatus> {
 
-        waitpid(self.0, None)
+        waitpid(self.0, options)
 
     }
 }

@@ -87,7 +87,7 @@ fn main() -> Result<(), Box<Error>> {
 
             });
 
-            let result = child.wait();
+            let result = child.wait(None);
             println!("{:?}", result);
 
         },

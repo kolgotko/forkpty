@@ -1,5 +1,4 @@
 use std::io;
-use std::fmt;
 use std::os::unix::io::{ AsRawFd, IntoRawFd };
 use std::error::Error;
 use std::mem;
@@ -8,46 +7,24 @@ use nix::unistd::*;
 use nix::pty::*;
 pub use nix::pty::Winsize;
 use nix::pty::PtyMaster as NixPtyMaster;
-use nix::fcntl::{OFlag, open, fcntl, FcntlArg};
+use nix::fcntl::{ OFlag, fcntl, FcntlArg };
 use nix::sys::wait::*;
 use nix::poll::*;
 use nix::Error as NixError;
-use nix::errno::Errno as NixErrno;
 pub use nix::sys::wait::WaitStatus;
 pub use nix::sys::wait::WaitPidFlag;
 
+use thiserror::Error as ThisError;
 
-#[derive(Debug)]
+
+#[derive(ThisError, Debug)]
 pub enum CloneError {
+    #[error("[EBADF] The oldd argument is not a valid active descriptor")]
     EBADF,
+    #[error("[EMFILE] Too many descriptors are active")]
     EMFILE,
-    Unsupported(NixError),
-}
-
-impl fmt::Display for CloneError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            CloneError::EBADF => {
-                write!(f, "[EBADF] The oldd argument is not a valid active descriptor")
-            },
-            CloneError::EMFILE => {
-                write!(f, "[EMFILE] Too many descriptors are active")
-            },
-            CloneError::Unsupported(error) => error.fmt(f)
-        }
-    }
-}
-
-impl Error for CloneError {}
-
-impl From<NixError> for CloneError {
-    fn from(value: NixError) -> CloneError {
-        match value {
-            NixError::Sys(NixErrno::EBADF) => CloneError::EBADF,
-            NixError::Sys(NixErrno::EMFILE) => CloneError::EMFILE,
-            nix_error @ _ => CloneError::Unsupported(nix_error),
-        }
-    }
+    #[error("{0}")]
+    Unsupported(#[from] NixError),
 }
 
 pub trait PtyResize {
@@ -72,11 +49,13 @@ pub trait SetNonblocking: AsRawFd {
         let saved = fcntl(fd, FcntlArg::F_GETFL)
             .map_err(|error| {
                 let kind = io::ErrorKind::Other;
+
                 io::Error::new(kind, error)
             })?;
         let mut o_flag = OFlag::from_bits(saved)
             .ok_or_else(|| {
                 let kind = io::ErrorKind::Other;
+
                 io::Error::new(kind, "incorrect bits for OFlag")
             })?;
 
@@ -84,6 +63,7 @@ pub trait SetNonblocking: AsRawFd {
         fcntl(fd, FcntlArg::F_SETFL(o_flag))
             .map_err(|error| {
                 let kind = io::ErrorKind::Other;
+
                 io::Error::new(kind, error)
             })?;
 
@@ -97,6 +77,7 @@ pub struct PtyReader { fd: i32, timeout: i32 }
 impl PtyReader {
     pub fn set_timeout(&mut self, value: i32) -> io::Result<()> {
         self.timeout = value;
+
         Ok(())
     }
 
@@ -112,19 +93,22 @@ impl io::Read for PtyReader {
         match poll(&mut [poll_fd], self.timeout) {
             Ok(0) => {
                 let kind = io::ErrorKind::TimedOut;
+
                 Err(io::Error::from(kind))
-            },
-            Ok(_) => {
-                read(self.fd, buf).map_err(|error| {
-                    let kind = io::ErrorKind::Other;
-                    io::Error::new(kind, error)
-                })
             },
             Ok(-1) => {
                 Err(io::Error::last_os_error())
             },
+            Ok(_) => {
+                read(self.fd, buf).map_err(|error| {
+                    let kind = io::ErrorKind::Other;
+
+                    io::Error::new(kind, error)
+                })
+            },
             Err(error) => {
                 let kind = io::ErrorKind::Other;
+
                 Err(io::Error::new(kind, error))
             }
         }
@@ -146,6 +130,7 @@ pub struct PtyWriter{ fd: i32, timeout: i32 }
 impl PtyWriter {
     pub fn set_timeout(&mut self, value: i32) -> io::Result<()> {
         self.timeout = value;
+
         Ok(())
     }
 
@@ -161,19 +146,22 @@ impl io::Write for PtyWriter {
         match poll(&mut [poll_fd], self.timeout) {
             Ok(0) => {
                 let kind = io::ErrorKind::TimedOut;
+
                 Err(io::Error::from(kind))
-            },
-            Ok(_) => {
-                write(self.fd, buf).map_err(|error| {
-                    let kind = io::ErrorKind::Other;
-                    io::Error::new(kind, error)
-                })
             },
             Ok(-1) => {
                 Err(io::Error::last_os_error())
             },
+            Ok(_) => {
+                write(self.fd, buf).map_err(|error| {
+                    let kind = io::ErrorKind::Other;
+
+                    io::Error::new(kind, error)
+                })
+            },
             Err(error) => {
                 let kind = io::ErrorKind::Other;
+
                 Err(io::Error::new(kind, error))
             }
         }
@@ -229,6 +217,7 @@ impl PtyMaster {
 
     pub fn try_clone(&self) -> Result<PtyMaster, CloneError> {
         let new_fd = dup(self.0)?;
+
         Ok(PtyMaster(new_fd))
     }
 
@@ -260,6 +249,7 @@ impl IntoRawFd for PtyMaster {
     fn into_raw_fd(self) -> i32 {
         let fd = self.0;
         mem::forget(self);
+
         fd
     }
 }

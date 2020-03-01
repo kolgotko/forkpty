@@ -1,6 +1,5 @@
 use std::io;
 use std::os::unix::io::{ AsRawFd, IntoRawFd };
-use std::error::Error;
 use std::mem;
 use std::fs::OpenOptions;
 use nix::unistd::*;
@@ -10,21 +9,22 @@ use nix::pty::PtyMaster as NixPtyMaster;
 use nix::fcntl::{ OFlag, fcntl, FcntlArg };
 use nix::sys::wait::*;
 use nix::poll::*;
-use nix::Error as NixError;
+pub use nix::Error as NixError;
 pub use nix::sys::wait::WaitStatus;
 pub use nix::sys::wait::WaitPidFlag;
-
 use thiserror::Error as ThisError;
 
-
 #[derive(ThisError, Debug)]
-pub enum CloneError {
-    #[error("[EBADF] The oldd argument is not a valid active descriptor")]
-    EBADF,
-    #[error("[EMFILE] Too many descriptors are active")]
-    EMFILE,
+pub enum ForkPtyErr {
     #[error("{0}")]
-    Unsupported(#[from] NixError),
+    Io(#[from] std::io::Error),
+    #[error("{0}")]
+    NixError(#[from] NixError),
+}
+
+pub enum ForkPtyValue {
+    Parent(Child, PtyMaster),
+    Child(Pid),
 }
 
 pub trait PtyResize {
@@ -215,7 +215,7 @@ impl PtyMaster {
         }
     }
 
-    pub fn try_clone(&self) -> Result<PtyMaster, CloneError> {
+    pub fn try_clone(&self) -> Result<PtyMaster, NixError> {
         let new_fd = dup(self.0)?;
 
         Ok(PtyMaster(new_fd))
@@ -227,7 +227,7 @@ impl Drop for PtyMaster {
     fn drop(&mut self) {
         let err = close(self.0);
 
-        if err == Err(nix::Error::Sys(nix::errno::Errno::EBADF)) {
+        if err == Err(NixError::Sys(nix::errno::Errno::EBADF)) {
             panic!("Closing an invalid file descriptor!");
         };
     }
@@ -254,7 +254,7 @@ impl IntoRawFd for PtyMaster {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct Child(Pid);
 
 impl Child {
@@ -263,12 +263,7 @@ impl Child {
     }
 }
 
-pub enum ForkPtyResult {
-    Parent(Child, PtyMaster),
-    Child(Pid),
-}
-
-pub fn forkpty() -> Result<ForkPtyResult, Box<dyn Error>> {
+pub fn forkpty() -> Result<ForkPtyValue, ForkPtyErr> {
     let pty_master = posix_openpt(OFlag::O_RDWR)?;
 
     grantpt(&pty_master)?;
@@ -283,21 +278,21 @@ pub fn forkpty() -> Result<ForkPtyResult, Box<dyn Error>> {
 
     match fork() {
         Ok(ForkResult::Parent { child, .. }) => {
-            close(slave_fd);
+            close(slave_fd)?;
 
             let child = Child(child);
             let fork_pty_master: PtyMaster = pty_master.into();
 
-            Ok(ForkPtyResult::Parent(child, fork_pty_master))
+            Ok(ForkPtyValue::Parent(child, fork_pty_master))
         },
         Ok(ForkResult::Child) => {
             let stdin = io::stdin();
             let stdout = io::stdout();
             let stderr = io::stderr();
 
-            close(stdin.as_raw_fd());
-            close(stdout.as_raw_fd());
-            close(stderr.as_raw_fd());
+            close(stdin.as_raw_fd())?;
+            close(stdout.as_raw_fd())?;
+            close(stderr.as_raw_fd())?;
             dup(slave_fd)?;
             dup(slave_fd)?;
             dup(slave_fd)?;
@@ -308,8 +303,8 @@ pub fn forkpty() -> Result<ForkPtyResult, Box<dyn Error>> {
                 libc::ioctl(0, libc::TIOCSCTTY.into(), 1);
             }
 
-            Ok(ForkPtyResult::Child(pid))
+            Ok(ForkPtyValue::Child(pid))
         },
-        Err(_) => { Err("Fork failed")? },
+        Err(error) => Err(error.into()),
     }
 }

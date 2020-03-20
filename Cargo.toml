@@ -1,7 +1,7 @@
 [package]
 name = "forkpty"
 version = "0.1.0"
-authors = ["Igor Bykov <igorb.dev@websm.io>"]
+authors = ["Igor Bykov <con29rus@gmail.com>"]
 edition = "2018"
 
 [dependencies]
@@ -10,6 +10,6 @@ libc = "0.2.67"
 thiserror = "1.0.11"
 derive_more = "0.99.3"
 
-tokio = { version = "0.2.13", features = ["full"] }
+tokio = { version = "0.2.13", features = ["signal", "io-util", "io-driver"] }
 mio = { version = "0.6.21" }
 futures = { version = "0.3.4" }

@@ -7,16 +7,22 @@ pub use nix::sys::wait::WaitStatus;
 mod common;
 mod pty_master;
 mod child;
+#[cfg(feature = "async")]
 mod async_pty_master;
+#[cfg(feature = "async")]
 mod async_child;
 mod utils;
 
 mod forkpty_common;
 use forkpty_common::forkpty_common;
-pub use common::{ PtyResize, ForkPtyErr, ForkPtyValue, AsyncForkPtyValue };
+pub use common::{ PtyResize, ForkPtyErr, ForkPtyValue };
+#[cfg(feature = "async")]
+pub use common::AsyncForkPtyValue;
 pub use pty_master::PtyMaster;
-pub use async_pty_master::AsyncPtyMaster;
 pub use child::Child;
+#[cfg(feature = "async")]
+pub use async_pty_master::AsyncPtyMaster;
+#[cfg(feature = "async")]
 pub use async_child::AsyncChild;
 
 pub fn forkpty() -> Result<ForkPtyValue, ForkPtyErr> {
@@ -26,6 +32,7 @@ pub fn forkpty() -> Result<ForkPtyValue, ForkPtyErr> {
     }
 }
 
+#[cfg(feature = "async")]
 pub fn forkpty_async() -> Result<AsyncForkPtyValue, ForkPtyErr> {
     match forkpty_common() {
         Ok(value) => Ok(value.into()),

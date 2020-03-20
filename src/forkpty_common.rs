@@ -47,7 +47,7 @@ pub(crate) fn forkpty_common() -> Result<CommonForkPtyValue, ForkPtyErr> {
             let pid = setsid()?;
 
             unsafe {
-                libc::ioctl(0, libc::TIOCSCTTY.into(), 1);
+                libc::ioctl(0, libc::TIOCSCTTY, 1);
             }
 
             Ok(CommonForkPtyValue::Child(pid))

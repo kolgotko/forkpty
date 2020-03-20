@@ -6,8 +6,10 @@ use nix::Error as NixError;
 use thiserror::Error as ThisError;
 
 use crate::Child;
-use crate::AsyncChild;
 use crate::pty_master::PtyMaster;
+#[cfg(feature = "async")]
+use crate::AsyncChild;
+#[cfg(feature = "async")]
 use crate::async_pty_master::AsyncPtyMaster;
 use crate::forkpty_common::CommonForkPtyValue;
 
@@ -35,11 +37,13 @@ impl From<CommonForkPtyValue> for ForkPtyValue {
     }
 }
 
+#[cfg(feature = "async")]
 pub enum AsyncForkPtyValue {
     Parent(AsyncChild, AsyncPtyMaster),
     Child(Pid),
 }
 
+#[cfg(feature = "async")]
 impl From<CommonForkPtyValue> for AsyncForkPtyValue {
     fn from(value: CommonForkPtyValue) -> Self {
         match value {

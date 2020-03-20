@@ -33,7 +33,7 @@ impl Future for WaitPidFuture {
     }
 }
 
-#[derive(Debug, Copy, Clone, From)]
+#[derive(Debug, Clone, From)]
 pub struct AsyncChild(pub Pid);
 
 impl AsyncChild {
